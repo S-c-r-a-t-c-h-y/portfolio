@@ -164,6 +164,6 @@ cython_debug/
 ### Fichier de compilation OCaml
 
 _build
-.cmi
-.cmx
-.o
+*.cmi
+*.cmx
+*.o
