@@ -12,12 +12,14 @@ let rec string_of_expr (e : expr) =
     match l with
     | [] -> ""
     | [ x ] -> string_of_expr x
+    | x :: (Times [ Nb -1.; _ ] as y) :: xs when sep = "+" ->
+        string_of_expr x ^ print_list (y :: xs) sep
     | x :: xs -> string_of_expr x ^ sep ^ print_list xs sep
   in
   match e with
   | Nb i -> nb_to_string i
   | Cst c -> string_of_cst c
-  | Var i -> "v" ^ string_of_int i
+  | Var i -> i
   | Plus l -> "(" ^ print_list l "+" ^ ")"
   | Times l -> "(" ^ print_list l "*" ^ ")"
   | Frac (e1, e2) -> "(" ^ string_of_expr e1 ^ "/" ^ string_of_expr e2 ^ ")"

@@ -1,3 +1,4 @@
 (library
  (name calcformel)
- (modules Func Expr Eval Derivation Printing Constants))
+ (libraries unix)
+ (modules Func Expr Eval Derivation Printing Constants Parsing))

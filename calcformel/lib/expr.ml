@@ -3,7 +3,7 @@ open Constants
 
 type expr =
   | Nb of float
-  | Var of int
+  | Var of string
   | Cst of constant
   | Plus of expr list
   | Times of expr list
@@ -16,6 +16,7 @@ type expr =
 let neg (e : expr) = Times [ Nb (-1.); e ]
 let square (e : expr) = Pow (e, Nb 2.)
 
+(* Returns the height of the expression as represented by a tree *)
 let rec nested_level (e : expr) =
   match e with
   | Nb _ | Var _ | Cst _ -> 0
@@ -45,11 +46,37 @@ Pattern simplifications done :
 Commuting simplifications
 *)
 let rec simplify (e : expr) =
+  (* returns the numerator and the denominator of the expression if fractions are present *)
+  let rec simplify_frac (l : expr list) =
+    match l with
+    | [] -> ([], [])
+    | Frac (x, y) :: xs ->
+        let num, den = simplify_frac xs in
+        (x :: num, y :: den)
+    | x :: xs ->
+        let num, den = simplify_frac xs in
+        (x :: num, den)
+  in
+
   (* simplification of Times statement *)
   let rec simplify_times (l : expr list) =
     let l' = List.map simplify l in
     if List.exists (fun x -> x = Nb 0.) l' then [ Nb 0. ] (* x * 0 = 0 *)
     else
+      (* merging nested Times *)
+      let rec merge_times (l : expr list) =
+        match l with
+        | [] -> (false, [])
+        | Times l' :: xs ->
+            let _, l = merge_times xs in
+            (true, l' @ l)
+        | x :: xs ->
+            let b, xs' = merge_times xs in
+            (b, x :: xs')
+      in
+      let b, l' = merge_times l' in
+      let l' = if b then simplify_times l' else l' in
+
       (* multiply all numbers together *)
       (* after simplifications, numerical factors are first in the list *)
       let rec compute_factor (l : expr list) =
@@ -64,28 +91,50 @@ let rec simplify (e : expr) =
       in
       let fac, l' = compute_factor l' in
       let l' = if fac = 1. then l' else Nb fac :: l' in
-      (* merging nested Times *)
-      let rec merge_times (l : expr list) =
-        match l with
-        | [] -> (false, [])
-        | Times l' :: xs ->
-            let _, l = merge_times xs in
-            (true, l' @ l)
-        | x :: xs ->
-            let b, xs' = merge_times xs in
-            (b, x :: xs')
-      in
-      let b, l' = merge_times l' in
-      let l' = if b then simplify_times l' else l' in
       let l' =
         List.stable_sort (fun x y -> nested_level x - nested_level y) l'
       in
+      (* merge duplicates *)
+      let rec count_and_delete (l : expr list) (e : expr) =
+        match l with
+        | [] -> (0., [])
+        | (Pow (x, Nb i) as y) :: xs ->
+            let cnt, new_l = count_and_delete xs e in
+            if equal x e then (cnt +. i, new_l)
+            else if equal y e then (cnt +. 1., new_l)
+            else (cnt, y :: new_l)
+        | x :: xs ->
+            let cnt, new_l = count_and_delete xs e in
+            if equal x e then (cnt +. 1., new_l) else (cnt, x :: new_l)
+      in
+      let rec factor_duplicates (l : expr list) =
+        match l with
+        | [] -> []
+        | x :: _ ->
+            let cnt, l = count_and_delete l x in
+            if cnt = 1. then x :: factor_duplicates l
+            else (Pow (x, Nb cnt) |> simplify) :: factor_duplicates l
+      in
+      let l' = factor_duplicates l' in
       l'
   in
 
   (* simplification of Plus statement *)
   let rec simplify_plus (l : expr list) =
     let l' = List.map simplify l in
+    (* merging nested Plus *)
+    let rec merge_plus (l : expr list) =
+      match l with
+      | [] -> (false, [])
+      | Plus l' :: xs ->
+          let _, new_l = merge_plus xs in
+          (true, l' @ new_l)
+      | x :: xs ->
+          let b, xs' = merge_plus xs in
+          (b, x :: xs')
+    in
+    let b, l' = merge_plus l' in
+    let l' = if b then simplify_plus l' else l' in
     (* sum all numbers together *)
     (* after simplifications, numerical factors are first in the list *)
     let rec compute_factor (l : expr list) =
@@ -100,41 +149,29 @@ let rec simplify (e : expr) =
     in
     let fac, l' = compute_factor l' in
     let l' = if fac = 0. then l' else Nb fac :: l' in
-    (* merging nested Plus *)
-    let rec merge_plus (l : expr list) =
-      match l with
-      | [] -> (false, [])
-      | Plus l' :: xs ->
-          let _, l = merge_plus xs in
-          (true, l' @ l)
-      | x :: xs ->
-          let b, xs' = merge_plus xs in
-          (b, x :: xs')
-    in
-    let b, l' = merge_plus l' in
-    let l' = if b then simplify_plus l' else l' in
     let l' = List.stable_sort (fun x y -> nested_level x - nested_level y) l' in
     (* merge duplicates *)
     let rec count_and_delete (l : expr list) (e : expr) =
       match l with
       | [] -> (0., [])
       | (Times [ Nb i; x ] as y) :: xs ->
-          let cnt, l = count_and_delete xs e in
-          if equal x e then (cnt +. i, l) else (cnt, y :: l)
+          let cnt, new_l = count_and_delete xs e in
+          if equal x e then (cnt +. i, new_l)
+          else if equal y e then (cnt +. 1., new_l)
+          else (cnt, y :: new_l)
       | x :: xs ->
-          let cnt, l = count_and_delete xs e in
-          if equal x e then (cnt +. 1., l) else (cnt, x :: l)
+          let cnt, new_l = count_and_delete xs e in
+          if equal x e then (cnt +. 1., new_l) else (cnt, x :: new_l)
     in
     let rec factor_duplicates (l : expr list) =
-      (* Printf.printf "%d\n" (List.length l); *)
       match l with
       | [] -> []
       | x :: _ ->
-          let cnt, l = count_and_delete l x in
-          if cnt = 1. then x :: factor_duplicates l
-          else Times [ Nb cnt; x ] :: factor_duplicates l
+          let cnt, new_l = count_and_delete l x in
+          if cnt = 1. then x :: factor_duplicates new_l
+          else (Times [ Nb cnt; x ] |> simplify) :: factor_duplicates new_l
     in
-    (* let l' = factor_duplicates l' in *)
+    let l' = factor_duplicates l' in
     l'
   in
 
@@ -148,16 +185,16 @@ let rec simplify (e : expr) =
     | Times l -> (
         match simplify_times l with
         | [ x ] -> x
-        | l' ->
-            Times l'
-            (* exp(x) * exp(y) = exp(x + y)
-                  | Func (Exp, x), Func (Exp, y) -> Func (Exp, Plus (x, y)) |> simplify
-                  (* x * y/z = y/z * x = (x*y)/z *)
-                  | x, Frac (y, z) | Frac (y, z), x -> Frac (Times (x, y), z) |> simplify
-                  (* x * x = x^2 *)
-                  | e1', e2' ->
-                      if equal e1' e2' then Pow (e1', Nb 2.) else Times (e1', e2')) *)
-        )
+        | l' -> (
+            match simplify_frac l' with
+            | l'', [] -> Times l''
+            | num, den ->
+                Frac (Times num, Times den) |> simplify
+                (* exp(x) * exp(y) = exp(x + y)
+                      | Func (Exp, x), Func (Exp, y) -> Func (Exp, Plus (x, y)) |> simplify
+                      (* x * y/z = y/z * x = (x*y)/z *)
+                      | x, Frac (y, z) | Frac (y, z), x -> Frac (Times (x, y), z) |> simplify *)
+            ))
     | Frac (e1, e2) -> (
         match (simplify e1, simplify e2) with
         (* 0 / x = 0 *)
@@ -191,10 +228,10 @@ let rec simplify (e : expr) =
             (* exp(ln(x)) = x *)
             | Func (Ln, e') -> e'
             (* exp(y*ln(x)) = exp(ln(x)*y) = x^y *)
-            (* | Times (e1', e2') as e' -> (
+            | Times [ e1'; e2' ] as e' -> (
                 match (e1', e2') with
                 | y, Func (Ln, x) | Func (Ln, x), y -> Pow (x, y)
-                | _ -> Func (Exp, e')) *)
+                | _ -> Func (Exp, e'))
             | e' -> Func (Exp, e'))
         | _ -> Func (f, simplify e))
     | e -> e
@@ -218,8 +255,6 @@ and equal (e1 : expr) (e2 : expr) =
         let b, l2' = find_and_remove l2 x in
         b && equal_list xs l2'
   in
-  nested_level e1 = nested_level e2
-  &&
   match (simplify e1, simplify e2) with
   | Nb i, Nb j -> i = j
   | Var i, Var j -> i = j

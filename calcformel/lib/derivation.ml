@@ -16,7 +16,7 @@ let derive_func (f : func) (e : expr) =
   | Cosh -> Func (Sinh, e)
   | Tanh -> Plus [ Nb 1.; Func (Tanh, e) |> square |> neg ]
 
-let derive (e : expr) (var : int) =
+let derive (e : expr) (var : string) =
   (* let rec derive_product (l : expr list) =
      match l with
      | [] | [ _ ] -> failwith "syntax error"
@@ -46,5 +46,5 @@ let derive (e : expr) (var : int) =
   in
   e |> simplify |> aux |> simplify
 
-let rec derive_n (e : expr) (var : int) ~(n : int) =
+let rec derive_n (e : expr) (var : string) ~(n : int) =
   if n = 0 then e else derive_n (derive e var) var ~n:(n - 1)
