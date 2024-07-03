@@ -39,6 +39,21 @@ let string_of_func (f : func) =
   | Cosh -> "cosh"
   | Tanh -> "tanh"
 
+let func_of_string (s : string) =
+  match s with
+  | "ln" -> Ln
+  | "exp" -> Exp
+  | "sin" -> Sin
+  | "cos" -> Cos
+  | "tan" -> Tan
+  | "asin" -> Asin
+  | "acos" -> Acos
+  | "atan" -> Atan
+  | "sinh" -> Sinh
+  | "cosh" -> Cosh
+  | "tanh" -> Tanh
+  | _ -> raise (Invalid_argument "Func.func_of_string")
+
 let latex_of_func (f : func) =
   match f with
   | Ln -> "\\ln"
@@ -52,3 +67,18 @@ let latex_of_func (f : func) =
   | Sinh -> "\\sinh"
   | Cosh -> "\\cosh"
   | Tanh -> "\\tanh"
+
+let func_litteral =
+  [
+    "ln";
+    "exp";
+    "sin";
+    "cos";
+    "tan";
+    "asin";
+    "acos";
+    "atan";
+    "sinh";
+    "cosh";
+    "tanh";
+  ]
