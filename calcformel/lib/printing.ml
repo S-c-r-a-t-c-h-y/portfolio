@@ -32,7 +32,9 @@ let rec string_of_expr ?(implicit_mul : bool = false) (e : expr) =
     | Frac (e1, e2) ->
         if encapsulate then "(" ^ aux e1 true ^ "/" ^ aux e2 true ^ ")"
         else aux e1 true ^ "/" ^ aux e2 true
-    | Pow (e1, e2) -> "(" ^ aux e1 true ^ "^" ^ aux e2 true ^ ")"
+    | Pow (e1, e2) ->
+        if encapsulate then "(" ^ aux e1 true ^ "^" ^ aux e2 true ^ ")"
+        else aux e1 true ^ "^" ^ aux e2 true
     | Func (f, e2) -> string_of_func f ^ "(" ^ aux e2 false ^ ")"
   in
   aux e false
