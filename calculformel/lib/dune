@@ -1,0 +1,14 @@
+(ocamlyacc
+ (modules parser))
+
+(ocamllex
+ (modules lexer))
+
+(library
+ (name calculformel)
+ (modules parser lexer func expr derivation simplification conversion))
+
+
+
+
+

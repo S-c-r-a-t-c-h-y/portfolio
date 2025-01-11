@@ -25,6 +25,35 @@ let rec nested_level (e : expr) =
   | Frac (e1, e2) | Pow (e1, e2) -> 1 + max (nested_level e1) (nested_level e2)
   | Func (_, e) -> 1 + nested_level e
 
+(* [exists2 f l] checks if at least two distinct elements of the list [l] that satisfies the predicate [f] *)
+let rec exists2 (f : 'a -> 'a -> bool) (l : 'a list) =
+  match l with
+  | [] | [ _ ] -> false
+  | x :: xs ->
+      List.exists (fun y -> f x y) xs
+      || List.exists (fun y -> f y x) xs
+      || exists2 f xs
+
+(* [find2_opt f l] returns the first two distinct elements of the list [l] that satisfies the predicate [f]. *)
+(* Returns [None] if there is no value that satisfies [f] in the list [l]. *)
+let rec find2_opt (f : 'a -> 'a -> bool) (l : 'a list) =
+  match l with
+  | [] | [ _ ] -> None
+  | x :: xs -> (
+      match List.find_opt (fun y -> f x y) xs with
+      | Some y -> Some (x, y)
+      | None -> (
+          match List.find_opt (fun y -> f y x) xs with
+          | Some y -> Some (y, x)
+          | None -> find2_opt f xs))
+
+(* [remove e l] removes the first instance of [e] in the list [l]. *)
+(* Does nothing if [e] is not in the list [l]. *)
+let rec remove (e : 'a) (l : 'a list) =
+  match l with
+  | [] -> []
+  | x :: xs -> if x = e then xs else x :: remove e xs
+
 (**
 Remark : extensive use of pattern matching cannot be done due to the need to simplify inner expressions first
 Pattern simplifications done :
@@ -33,16 +62,21 @@ Pattern simplifications done :
 - 0 * x = x * 0 = 0
 - 0 / x = 0
 - x / x = 1
-- y * 1/x = 1/x * y = y/x TODO
+- y * 1/x = 1/x * y = y/x
 - x ^ 1 = x
 - x / 0 -> raise Division_by_zero
 - nb i / nb j = nb (i / j)
 - (nb i)^(nb j) = nb (i^j)
 - x^p * x^q = x^(p+q) TODO
+- nb i * x + nb j * x = nb (i+j) * y
 - exp(ln(x)) = ln(exp(x)) = x
 - exp(y*ln(x)) = exp(ln(x)*y) = x^y
-- exp(x) * exp(y) = exp(x + y) TODO
-- cos^2(x) + sin^2(x) = 1 TODO
+- exp(x) * exp(y) = exp(x + y)
+- exp(1) = e
+- exp(0) = 1
+- ln(e) = 1
+- ln(1) = 0
+- cos^2(x) + sin^2(x) = 1
 Commuting simplifications
 *)
 let rec simplify (e : expr) =
@@ -110,6 +144,10 @@ let rec simplify (e : expr) =
       let rec factor_duplicates (l : expr list) =
         match l with
         | [] -> []
+        | Pow (x, Nb i) :: _ ->
+            let cnt, l = count_and_delete l x in
+            if cnt = 1. then x :: factor_duplicates l
+            else (Pow (x, Nb cnt) |> simplify) :: factor_duplicates l
         | x :: _ ->
             let cnt, l = count_and_delete l x in
             if cnt = 1. then x :: factor_duplicates l
@@ -117,6 +155,27 @@ let rec simplify (e : expr) =
       in
       let l' = factor_duplicates l' in
       l'
+  in
+  let simplify_times_pattern (l : expr list) =
+    (* exp(x) * exp(y) = exp(x + y) *)
+    let l =
+      match
+        find2_opt
+          (fun x y ->
+            match (x, y) with
+            | Func (Exp, _), Func (Exp, _) -> true
+            | _ -> false)
+          l
+      with
+      | Some ((Func (Exp, x) as e1), (Func (Exp, y) as e2)) ->
+          let l' = remove e1 (remove e2 l) in
+          Func (Exp, Plus [ x; y ]) :: l' |> simplify_times
+      | _ -> l
+    in
+    (* simplification of fractions *)
+    match simplify_frac l with
+    | l, [] -> Times l
+    | num, den -> Frac (Times num, Times den) |> simplify
   in
 
   (* simplification of Plus statement *)
@@ -166,6 +225,10 @@ let rec simplify (e : expr) =
     let rec factor_duplicates (l : expr list) =
       match l with
       | [] -> []
+      | Times [ Nb i; x ] :: _ ->
+          let cnt, new_l = count_and_delete l x in
+          if cnt = 1. then x :: factor_duplicates new_l
+          else (Times [ Nb cnt; x ] |> simplify) :: factor_duplicates new_l
       | x :: _ ->
           let cnt, new_l = count_and_delete l x in
           if cnt = 1. then x :: factor_duplicates new_l
@@ -174,6 +237,25 @@ let rec simplify (e : expr) =
     let l' = factor_duplicates l' in
     l'
   in
+  let simplify_plus_pattern (l : expr list) =
+    (* cos^2(x) + sin^2(x) = 1 *)
+    let l =
+      match
+        find2_opt
+          (fun x y ->
+            match (x, y) with
+            | Pow (Func (Cos, e1), Nb 2.), Pow (Func (Sin, e2), Nb 2.)
+              when equal e1 e2 -> true
+            | _ -> false)
+          l
+      with
+      | Some (e1, e2) ->
+          let l' = remove e1 (remove e2 l) in
+          Nb 1. :: l' |> simplify_plus
+      | _ -> l
+    in
+    Plus l
+  in
 
   (* main simplification *)
   let pattern_simplify (e : expr) =
@@ -181,20 +263,11 @@ let rec simplify (e : expr) =
     | Plus l -> (
         match simplify_plus l with
         | [ x ] -> x
-        | l' -> Plus l')
+        | l' -> simplify_plus_pattern l')
     | Times l -> (
         match simplify_times l with
         | [ x ] -> x
-        | l' -> (
-            match simplify_frac l' with
-            | l'', [] -> Times l''
-            | num, den ->
-                Frac (Times num, Times den) |> simplify
-                (* exp(x) * exp(y) = exp(x + y)
-                      | Func (Exp, x), Func (Exp, y) -> Func (Exp, Plus (x, y)) |> simplify
-                      (* x * y/z = y/z * x = (x*y)/z *)
-                      | x, Frac (y, z) | Frac (y, z), x -> Frac (Times (x, y), z) |> simplify *)
-            ))
+        | l' -> simplify_times_pattern l')
     | Frac (e1, e2) -> (
         match (simplify e1, simplify e2) with
         (* 0 / x = 0 *)
@@ -204,8 +277,8 @@ let rec simplify (e : expr) =
         (* nb i / nb j = nb (i / j) *)
         | Nb i, Nb j -> Nb (i /. j)
         (* fraction simplification *)
-        (* | Times (Nb i, e1'), Times (Nb j, e2') ->
-            Times (Nb (i /. j), Frac (e1', e2')) |> simplify *)
+        | Times [ Nb i; e1' ], Times [ Nb j; e2' ] ->
+            Times [ Nb (i /. j); Frac (e1', e2') ] |> simplify
         | e1', e2' -> if equal e1' e2' then Nb 1. else Frac (e1', e2'))
     | Pow (e1, e2) -> (
         match (simplify e1, simplify e2) with
@@ -218,10 +291,14 @@ let rec simplify (e : expr) =
         | e1', e2' -> Pow (e1', e2'))
     | Func (f, e) -> (
         match f with
-        (* ln(exp(x)) = x *)
         | Ln -> (
             match simplify e with
+            (* ln(exp(x)) = x *)
             | Func (Exp, e') -> e'
+            (* ln(e) = 1 *)
+            | Cst E -> Nb 1.
+            (* ln(1) = 0 *)
+            | Nb 1. -> Nb 0.
             | e' -> Func (Ln, e'))
         | Exp -> (
             match simplify e with
@@ -232,6 +309,10 @@ let rec simplify (e : expr) =
                 match (e1', e2') with
                 | y, Func (Ln, x) | Func (Ln, x), y -> Pow (x, y)
                 | _ -> Func (Exp, e'))
+            (* exp(1) = e *)
+            | Nb 1. -> Cst E
+            (* exp(0) = 1 *)
+            | Nb 0. -> Nb 1.
             | e' -> Func (Exp, e'))
         | _ -> Func (f, simplify e))
     | e -> e
