@@ -201,7 +201,7 @@ let print_solutions n unique out_chan =
     @param n nombre de reines à placer
     @return  un array des positions des [n] reines
 *)
-let place_n_reines n =
+let place_n_reines (n : int) : int array =
   let shuffle t =
     for i = 1 to n - 1 do
       let j = Random.int (i + 1) in
@@ -218,7 +218,7 @@ let place_n_reines n =
     @param arr l'array d'entiers
     @return    l'indice de l'élément
 *)
-let indice_min (arr : int array) =
+let indice_min (arr : int array) : int =
   let m = ref arr.(0) and inds = ref [ 0 ] and k = ref 1 in
   for i = 1 to Array.length arr - 1 do
     if arr.(i) < !m then (
@@ -237,7 +237,7 @@ let indice_min (arr : int array) =
     @param n      le nombre de reines
     @return       l'indice de la reine en conflit avec le plus de reines ainsi que ce nombre de conflits
 *)
-let max_conflits reines n =
+let max_conflits (reines : int array) (n : int) : int * int =
   let tmp = ref 0
   and col = Array.make n 0
   and diag1 = Array.make (n + n) 0
@@ -272,7 +272,8 @@ let max_conflits reines n =
     @param n      le nombre de reines
     @return       un array où [array.(i)] contient le nombre de conflits entre les [reines] et la case d'indice (ligne, i)
 *)
-let calc_conflits_ligne reines ligne n =
+let calc_conflits_ligne (reines : int array) (ligne : int) (n : int) : int array
+    =
   let conflits = Array.make n 0 and tmp = ref 0 in
   for i = 0 to n - 1 do
     if i <> ligne then (
@@ -291,26 +292,27 @@ let calc_conflits_ligne reines ligne n =
     @param n      le nombre de reines
     @return       l'indice de la colonne la moins en conflit
 *)
-let min_conflits reines ligne n =
+let min_conflits (reines : int array) (ligne : int) (n : int) : int =
   calc_conflits_ligne reines ligne n |> indice_min
+[@@inline always]
 
 (**
-    [reparer reines n] "répare" les [reines], c'est à dire qu'il déplace une reine dans l'optique de réduire le nombre de conflits total
+    [reparer reines n] "repare" les [reines], c'est à dire qu'il déplace une reine dans l'optique de réduire le nombre de conflits total
     @param reines un array des positions des reines
     @param n      le nombre de reines
     @return       [true] si et seulement si aucune reine n'est en conflit après la réparation
 *)
-let reparer reines n =
+let reparer (reines : int array) (n : int) : bool =
   let ligne, nb_conflits = max_conflits reines n in
   reines.(ligne) <- min_conflits reines ligne n;
   nb_conflits <> 0
-
+  
 (**
     [solution_conflits n] résoud le problème des n-reines en utilisant une méthode de résolution de conflits
     @param  n la taille de l'échiquier
     @return un array où le nombre à l'index i représente l'ordonnée j de la reine sur la ligne i
 *)
-let solution_conflits n ?(iter_max = 2 * n) () =
+let solution_conflits (n : int) (iter_max : int) =
   let reines = ref (place_n_reines n) and iter_count = ref 0 in
   while reparer !reines n do
     incr iter_count;
@@ -325,8 +327,9 @@ let solution_conflits n ?(iter_max = 2 * n) () =
     @param n          la taille de l'échiquier
     @param out_chan   channel de sortie sur lequel doit être affiché la solution (stdout ou un fichier)
 *)
-let print_solution_conflits n ?(iter_max = n) out_chan =
-  let sol = solution_conflits n ~iter_max () in
+let print_solution_conflits (n : int) (iter_max : int) (out_chan : out_channel)
+    =
+  let sol = solution_conflits n iter_max in
   for i = 0 to n - 1 do
     for j = 0 to n - 1 do
       if j = sol.(i) then Printf.fprintf out_chan "|x"
@@ -341,16 +344,17 @@ let print_solution_conflits n ?(iter_max = n) out_chan =
   [n_reines n all unique conflit nb out_chan print] détermine quelle fonction appeler en fonction des paramètres passés par l'utilisateur.
   Pour plus de précision sur les paramètres, exécutez [./n_reines --help]
 *)
-let n_reines n all unique conflit nb out_chan print =
+let n_reines (n : int) (all : bool) (unique : bool) (conflit : bool) (nc : int)
+    (nb : bool) (out_chan : out_channel) (print : bool) =
   if n <= 0 || n = 2 || n = 3 then Printf.printf "Pas de solution pour n=%d\n" n
   else if print then
     if nb then print_nb_solutions n unique out_chan
     else if all || unique then print_solutions n unique out_chan
-    else if conflit then print_solution_conflits n out_chan
+    else if conflit then print_solution_conflits n nc out_chan
     else print_solution n out_chan
   else if nb then solutions n unique |> List.length |> ignore
   else if all || unique then solutions n unique |> ignore
-  else if conflit then solution_conflits n () |> ignore
+  else if conflit then solution_conflits n nc |> ignore
   else solution n |> ignore
 
 (**
@@ -358,11 +362,11 @@ let n_reines n all unique conflit nb out_chan print =
 *)
 let main =
   (* le fonctionnement de la fonction main n'est pas important, il permet d'exécuter le fichier avec différentes options *)
-  let start_time = Sys.time () in
   let all = ref false in
   let unique = ref false in
   let conflit = ref false in
   let n = ref 8 in
+  let iteration_conflit = ref 0 in
   let out_chan = ref stdout in
   let print = ref true in
   let nb = ref false in
@@ -383,6 +387,11 @@ let main =
           Arg.Set conflit,
           " Résolution à l'aide de la méthode de résolution des conflits (plus \
            rapide). Incompatible avec les options -all et -unique" );
+        ( "-nc",
+          Arg.Set_int iteration_conflit,
+          "<int> Fixe le nombre d'itérations maximum effectuées par la méthode \
+           de résolution de conflit avant de changer de configuration \
+           (défault=nombre de reines / 2)" );
         ( "-nb",
           Arg.Set nb,
           " Renvoie uniquement le nombre de solutions et non les solutions \
@@ -400,12 +409,15 @@ let main =
       ]
   in
   let usage_msg =
-    "n_reines [-all] [-unique] [-conflit] [-nb] [-perf] [-o <nom du fichier>] \
-     [-n <nombre de reines>]"
+    "n_reines [-all] [-unique] [-conflit] [-nc] [-nb] [-perf] [-o <nom du \
+     fichier>] [-n <nombre de reines>]"
   in
   Arg.parse speclist (fun anon -> ()) usage_msg;
   Random.self_init ();
-  n_reines !n !all !unique !conflit !nb !out_chan !print;
+  if !iteration_conflit = 0 then
+    if !n >= 1000 then iteration_conflit := !n / 2 else iteration_conflit := !n;
+  let start_time = Sys.time () in
+  n_reines !n !all !unique !conflit !iteration_conflit !nb !out_chan !print;
   Printf.printf "Temps d'exécution : %fs\n" (Sys.time () -. start_time)
 
 let () = main
