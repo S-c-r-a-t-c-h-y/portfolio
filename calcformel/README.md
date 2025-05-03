@@ -39,3 +39,6 @@ intégration ?
 prouver terminaison fonctions simplify et equal
 cas d'égalité de fraction + revoir cas égalité Pow
 ajouter nombres complexes
+
+FIX :
+corriger multiplication implicite dans le parsing

@@ -1,0 +1,6 @@
+[submodule "better-fouine"]
+	path = better-fouine
+	url = git@gitlab.aliens-lyon.fr:amazoyer/better-fouine.git
+[submodule "pieuvre"]
+	path = pieuvre
+	url = git@gitlab.aliens-lyon.fr:jupon/pieuvre.git

@@ -6,10 +6,17 @@ from mouse_control import *
 from face_control import *
 
 
+# possible inspiration for future changes : https://github.com/Asadullah-Dal17/Eyes-Position-Estimator-Mediapipe/tree/master
+
 DEBUG = True
 
 
-def get_screen_metrics():
+def get_screen_metrics() -> tuple[int, int]:
+    """
+    Returns the width and height of the screen.
+    Returns:
+        Tuple[int, int]: A tuple containing the width and height of the screen.
+    """
     screens = screeninfo.get_monitors()
     screen = screens[0]
 
@@ -34,12 +41,16 @@ BLINKING_TRESHOLD: float = 0.012
 # number of frames needed to register it as a click
 BLINKING_COUNT_TRESHOLD: int = 4
 
+# the treshold for processing the pupil position
+EYE_DARKNESS_TRESHOLD: int = 95
+
 
 controller = FaceControl(
     SCREEN_WIDTH,
     SCREEN_HEIGHT,
     blinking_closure_treshold=BLINKING_TRESHOLD,
     frames_blinking_before_eyes_closed=BLINKING_COUNT_TRESHOLD,
+    eye_darkness_treshold=EYE_DARKNESS_TRESHOLD,
     debug=DEBUG,
 )
 
@@ -71,11 +82,13 @@ with mp_face_mesh.FaceMesh(
         face = results.multi_face_landmarks[0]
         # The coordinates of the nth landmark are stored in face.landmark[n]
 
-        controller.update(face)
+        controller.update(face, image)
 
         ###* Draw the face mesh annotations on the image. ###
 
         if DEBUG:
+            print(controller.analyser.eye_positions())
+
             image.flags.writeable = True
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
@@ -86,20 +99,20 @@ with mp_face_mesh.FaceMesh(
                 landmark_drawing_spec=None,
                 connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_tesselation_style(),
             )
-            mp_drawing.draw_landmarks(
-                image=image,
-                landmark_list=face,
-                connections=mp_face_mesh.FACEMESH_CONTOURS,
-                landmark_drawing_spec=None,
-                connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_contours_style(),
-            )
-            mp_drawing.draw_landmarks(
-                image=image,
-                landmark_list=face,
-                connections=mp_face_mesh.FACEMESH_IRISES,
-                landmark_drawing_spec=None,
-                connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_iris_connections_style(),
-            )
+            # mp_drawing.draw_landmarks(
+            #     image=image,
+            #     landmark_list=face,
+            #     connections=mp_face_mesh.FACEMESH_CONTOURS,
+            #     landmark_drawing_spec=None,
+            #     connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_contours_style(),
+            # )
+            # mp_drawing.draw_landmarks(
+            #     image=image,
+            #     landmark_list=face,
+            #     connections=mp_face_mesh.FACEMESH_IRISES,
+            #     landmark_drawing_spec=None,
+            #     connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_iris_connections_style(),
+            # )
             ####################################################
 
             # Flip the image horizontally for a selfie-view display.
@@ -110,6 +123,10 @@ with mp_face_mesh.FaceMesh(
                 break
             elif key & 0xFF == ord("u"):
                 controller.calibrate()
+            elif key & 0xFF == ord("p"):
+                controller.analyser.treshold += 1
+            elif key & 0xFF == ord("m"):
+                controller.analyser.treshold -= 1
 
 cap.release()
 print("stopped")

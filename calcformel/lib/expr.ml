@@ -54,6 +54,8 @@ let rec remove (e : 'a) (l : 'a list) =
   | [] -> []
   | x :: xs -> if x = e then xs else x :: remove e xs
 
+let rec pgcd a b = if b = 0 then abs a else pgcd b (a mod b)
+
 (**
 Remark : extensive use of pattern matching cannot be done due to the need to simplify inner expressions first
 Pattern simplifications done :
@@ -65,7 +67,6 @@ Pattern simplifications done :
 - y * 1/x = 1/x * y = y/x
 - x ^ 1 = x
 - x / 0 -> raise Division_by_zero
-- nb i / nb j = nb (i / j)
 - (nb i)^(nb j) = nb (i^j)
 - x^p * x^q = x^(p+q) TODO
 - nb i * x + nb j * x = nb (i+j) * y
@@ -274,11 +275,23 @@ let rec simplify (e : expr) =
         | Nb 0., _ -> Nb 0.
         (* x / 0 *)
         | _, Nb 0. -> raise Division_by_zero
-        (* nb i / nb j = nb (i / j) *)
-        | Nb i, Nb j -> Nb (i /. j)
+        (* nb i / nb j *)
+        | Nb i, Nb j ->
+            let f1, e1 = modf i and f2, e2 = modf j in
+            if f1 = 0. && f2 = 0. then
+              let p = pgcd (int_of_float e1) (int_of_float e2) in
+              Frac (Nb (i /. float p), Nb (j /. float p))
+            else Frac (Nb i, Nb j)
         (* fraction simplification *)
         | Times [ Nb i; e1' ], Times [ Nb j; e2' ] ->
-            Times [ Nb (i /. j); Frac (e1', e2') ] |> simplify
+            let f1, e1 = modf i and f2, e2 = modf j in
+            if f1 = 0. && f2 = 0. then
+              let p = pgcd (int_of_float e1) (int_of_float e2) in
+              Frac
+                ( Times [ Nb (i /. float p); e1' ],
+                  Times [ Nb (j /. float p); e2' ] )
+              |> simplify
+            else Frac (Times [ Nb i; e1' ], Times [ Nb j; e2' ])
         | e1', e2' -> if equal e1' e2' then Nb 1. else Frac (e1', e2'))
     | Pow (e1, e2) -> (
         match (simplify e1, simplify e2) with

@@ -55,8 +55,8 @@ let add_implicit_mul (s : string) =
       let c2 = s.[i] in
       if List.mem c1 op_list || List.mem c2 op_list then
         s' := !s' ^ String.make 1 c2
-      else if c2 = '(' then s' := !s' ^ "*("
-      else if c1 = ')' then s' := !s' ^ "*" ^ String.make 1 c2
+      else if c2 = '(' && c1 <> '(' then s' := !s' ^ "*("
+      else if c1 = ')' && c2 <> ')' then s' := !s' ^ "*" ^ String.make 1 c2
       else if
         (not
            (List.mem c1 ('.' :: int_char_list)
@@ -114,7 +114,7 @@ let find_func_litteral (s : string) (i : int) =
           if s' = x then (func_of_string x, i + n) else aux xs
         with Invalid_argument _ -> aux xs)
   in
-  aux func_litteral
+  aux (List.sort (fun x y -> String.length y - String.length x) func_litteral)
 
 (* searches for a constant litteral and return the constant associated with if it exists *)
 (* otherwise raises Not_found *)
@@ -129,7 +129,7 @@ let find_cst_litteral (s : string) (i : int) =
           if s' = x then (cst_of_string x, i + n) else aux xs
         with Invalid_argument _ -> aux xs)
   in
-  aux cst_litteral
+  aux (List.sort (fun x y -> String.length y - String.length x) cst_litteral)
 
 (* return the index of the matching parentheses, assuming the opening is at index i *)
 (* raises ParsingError otherwise *)
@@ -163,12 +163,14 @@ let rec parse_inner (s : string) =
     then
       let f, _ = parse_float s 0 in
       Nb f
-    else
-      try
-        (* searches for constants *)
-        let c, _ = find_cst_litteral s 0 in
-        Cst c
-      with Not_found -> parse_func s
+    else parse_func s
+
+and parse_cst (s : string) =
+  try
+    (* searches for constants *)
+    let c, _ = find_cst_litteral s 0 in
+    Cst c
+  with Not_found -> parse_var s
 
 (* parses functions with the form func(args) *)
 and parse_func (s : string) =
@@ -180,7 +182,7 @@ and parse_func (s : string) =
       Func (f, e)
   with
   | Invalid_argument _ -> raise ParsingError
-  | Not_found -> parse_var s
+  | Not_found -> parse_cst s
 
 (* parses any remaining alphabetic characters as product of variables *)
 and parse_var (s : string) =
@@ -223,4 +225,5 @@ and parse_plus (s : string) =
 
 and parse (s : string) =
   if not @@ well_parenthesized s then raise ParsingError
-  else s |> remove_blank |> add_implicit_mul |> parse_neg |> parse_plus
+    (* else s |> remove_blank |> add_implicit_mul |> parse_neg |> parse_plus *)
+  else s |> remove_blank |> parse_neg |> parse_plus
